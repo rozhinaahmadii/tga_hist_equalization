@@ -33,13 +33,8 @@ We will also present:
 ---
 
 ## 🚀 Getting Started
-
-### Prerequisites
-
-- CUDA-compatible GPU
-- CUDA Toolkit installed
-- C++ compiler (e.g., `g++`)
-- Optional: OpenCV or stb_image for image I/O
+make
+./Hist-CPU.exe
 
 ### Build and Run
 

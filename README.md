@@ -45,6 +45,8 @@ We will also present:
 
 > Instructions and Makefile will be added once the implementation is complete.
 
+job.sh: Submits a CUDA job to a GPU queue.
+
 ---
 
 ## 📊 Evaluation & Benchmarking

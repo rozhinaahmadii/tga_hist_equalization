@@ -1,5 +1,4 @@
-# 🎨 CUDA Histogram Equalization (Project 8 – TGA 2024–25)
-
+# 🎨 CUDA Histogram Equalization 
 This project implements a high-performance histogram equalization algorithm for **color images** using **NVIDIA CUDA**. The goal is to enhance contrast in images with low definition or excessive brightness, especially in contexts like medical imaging and visual enhancement. This project is developed as part of the *Tarjetas Gráficas y Aceleradores* (TGA) course at UPC.
 
 ---

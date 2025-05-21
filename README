@@ -1,52 +1,51 @@
-CUDA HISTOGRAM EQUALIZATION Project
-Tarjetas Gráficas y Aceleradores 2024-25 Q2
-Departamento de Arquitectura de Computadores 48/57
-Rozhina Ahmadi
-Jan Anton Villanueva
----
-Introducción:
-El algoritmo de equalización es un algoritmo utilizado para aumentar el contraste de las
-siluetas u objectos que aparecen en una imagen con poca definición, mucho brillo, etc. La equalización de una imagen puede ayudar, por ejemplo, a mejorar el
-contraste en imágenes médicas.
----
-Algoritmo:
-El algoritmo básicamente consiste en:
-1. Generar un histograma de la imagen
-2. A partir del histograma, en función de los valores máximos y mínimos, generar una tabla de
-traducción (equalización).
-3. Equalizar la imagen.
----
-Tabla de Equalización:
-Para generar la tabla de equalización, puede ser tan simple como pasar de una distribución [min : max]
-a otra [0 : N − 1]. La siguiente figura muestra un ejemplo de como sería una tabla de trducción. Si tenemos una
-imagen en blanco y negro, cada píxel es un valor entre 0 y 255, el algoritmo es simple de implementar.
+# CUDA Histogram Equalization
 
-En este proyecto trabajamos con RGB (24 bits). En este caso el algoritmo puede tener muchas variantes. Podríamos hacer un
-histograma para cada color y equalizar cada color por separado. También podríamos tomar la parte alta
-de cada color, por ejemplo los 4 bits de mayor peso de cada color y hacer el histograma con los 12 bits
-resultantes.
+## Authors
+Rozhina Ahmadi  
+Jan Anton Villanueva
+
+## Course
+GPU and Accelerators 2024-25 Q2  
+Department of Computer Architecture
+
 ---
-Implementación CUDA en 1 GPU:
-La primera parte del proyecto es la implementación del algoritmo de equalización en 1 GPU.
-Trabajaremos con diferentes imagenes de diferentes tamaños.
-Podéis utilizar la versión de CPU que os subministraremos.
-Os sugerimos realizar diferentes versiones del programa para que::
-• El kernel trabaje por filas, columnas, o a bloques.
-• Utilitzar o no shared memory.
-• El programa use memoria pinned o no.
-• El programa trabaje con diferentes streams.
+
+## Project Summary
+
+Histogram Equalization is a technique used to improve the contrast of images, especially those with poor lighting or low definition. It is widely used in medical imaging, object detection, and photography.
+
+In this project, we implement histogram equalization for 24-bit RGB images using CUDA. We explore different strategies to maximize GPU performance.
+
 ---
-Implementación CUDA en varias GPUs:
-En este apartado os pedimos que hagáis una versión que trabaje con 1, 2, 4 GPUs, para la mejor versión
-del apartado anterior, sin usar streams.
+
+## Algorithm Overview
+
+The algorithm consists of:
+
+1. Convert RGB to YCbCr (we use only the luminance "Y" channel for equalization).
+2. Compute the histogram of Y values (range 0–255).
+3. Compute the cumulative distribution function (CDF).
+4. Use the CDF to map each pixel to an equalized Y value.
+5. Reconstruct the image in RGB space.
+
 ---
-Resultados esperados
-Es importante que comprobéis que la aplicación funciona de forma similar a cómo lo hacíamos en las
-sesiones dirigidas.
+
+## CPU vs GPU Implementations
+
+We implemented both CPU and GPU versions:
+
+- `Hist-CPU.cu`: Baseline CPU implementation.
+- `Hist-GPU.cu`: CUDA-based version with various optimizations.
+
+In the GPU version, we tested:
+- Row-wise, column-wise, and block-wise kernels
+- Use of shared memory and pinned memory
+- Multi-GPU scalability (1, 2, 4 GPUs)
+
 ---
-En la presentación de los rendimientos sólo nos interesa el rendimiento de los kernels. Como resultado
-nos gustaría una tabla con tiempos de ejecución y una gráfica donde se muestre el speedup conseguido
-respecto a la versión CPU.
----
-**make**
-**./Hist-CPU.exe**
+
+## How to Run
+
+### Compile:
+```bash
+make

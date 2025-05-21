@@ -34,7 +34,7 @@ The algorithm consists of:
 
 We implemented both CPU and GPU versions:
 
-- `Hist-CPU.cu`: Baseline CPU implementation.
+- `Hist-CPU.cu`: Baseline CPU implementation. 16.069ms
 - `Hist-GPU.cu`: CUDA-based version with various optimizations.
 
 In the GPU version, we tested:

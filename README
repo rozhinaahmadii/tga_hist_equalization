@@ -49,3 +49,11 @@ In the GPU version, we tested:
 ### Compile:
 ```bash
 make
+
+Run CPU version:
+```bash
+./Hist-CPU.exe
+
+Run GPU version:
+```bash
+./Hist-GPU.exe

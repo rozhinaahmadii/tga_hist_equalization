@@ -3,8 +3,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <sys/times.h>
+#include <sys/time.h>
 #include <sys/resource.h>
-
 using namespace std;
 
 
@@ -97,7 +97,7 @@ static int eq_CPU(unsigned char *input_ptr){
 
 int main(int argc, char** argv)
 {
-    char input[] = "./IMG/IMG00.jpg";
+    char input[] = "./IMG/IMG01.jpg";
     char output[] = "out_seq.jpg";
     
     if (loadImg(input, output) == 0);

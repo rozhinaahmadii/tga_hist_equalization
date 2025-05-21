@@ -105,8 +105,19 @@ int main(int argc, char** argv)
         return (-1);
 
     printf("Starting to process.. \n");
-        
+    // Start time
+    struct timeval start, end;
+    gettimeofday(&start, NULL);   
+
     eq_CPU(image);
+
+    // End time
+    gettimeofday(&end, NULL);
+    long seconds = end.tv_sec - start.tv_sec;
+    long micros  = end.tv_usec - start.tv_usec;
+    double elapsed_ms = seconds * 1000.0 + micros / 1000.0;
+
+    printf(" CPU equalization done in %.3f ms\n", elapsed_ms);
 
     string output_name;
     //Save the image

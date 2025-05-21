@@ -1,2 +1,52 @@
-make
-./Hist-CPU.exe
+CUDA HISTOGRAM EQUALIZATION Project
+Tarjetas Gráficas y Aceleradores 2024-25 Q2
+Departamento de Arquitectura de Computadores 48/57
+Rozhina Ahmadi
+Jan Anton Villanueva
+---
+Introducción:
+El algoritmo de equalización es un algoritmo utilizado para aumentar el contraste de las
+siluetas u objectos que aparecen en una imagen con poca definición, mucho brillo, etc. La equalización de una imagen puede ayudar, por ejemplo, a mejorar el
+contraste en imágenes médicas.
+---
+Algoritmo:
+El algoritmo básicamente consiste en:
+1. Generar un histograma de la imagen
+2. A partir del histograma, en función de los valores máximos y mínimos, generar una tabla de
+traducción (equalización).
+3. Equalizar la imagen.
+---
+Tabla de Equalización:
+Para generar la tabla de equalización, puede ser tan simple como pasar de una distribución [min : max]
+a otra [0 : N − 1]. La siguiente figura muestra un ejemplo de como sería una tabla de trducción. Si tenemos una
+imagen en blanco y negro, cada píxel es un valor entre 0 y 255, el algoritmo es simple de implementar.
+
+En este proyecto trabajamos con RGB (24 bits). En este caso el algoritmo puede tener muchas variantes. Podríamos hacer un
+histograma para cada color y equalizar cada color por separado. También podríamos tomar la parte alta
+de cada color, por ejemplo los 4 bits de mayor peso de cada color y hacer el histograma con los 12 bits
+resultantes.
+---
+Implementación CUDA en 1 GPU:
+La primera parte del proyecto es la implementación del algoritmo de equalización en 1 GPU.
+Trabajaremos con diferentes imagenes de diferentes tamaños.
+Podéis utilizar la versión de CPU que os subministraremos.
+Os sugerimos realizar diferentes versiones del programa para que::
+• El kernel trabaje por filas, columnas, o a bloques.
+• Utilitzar o no shared memory.
+• El programa use memoria pinned o no.
+• El programa trabaje con diferentes streams.
+---
+Implementación CUDA en varias GPUs:
+En este apartado os pedimos que hagáis una versión que trabaje con 1, 2, 4 GPUs, para la mejor versión
+del apartado anterior, sin usar streams.
+---
+Resultados esperados
+Es importante que comprobéis que la aplicación funciona de forma similar a cómo lo hacíamos en las
+sesiones dirigidas.
+---
+En la presentación de los rendimientos sólo nos interesa el rendimiento de los kernels. Como resultado
+nos gustaría una tabla con tiempos de ejecución y una gráfica donde se muestre el speedup conseguido
+respecto a la versión CPU.
+---
+**make**
+**./Hist-CPU.exe**

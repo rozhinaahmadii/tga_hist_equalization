@@ -36,6 +36,7 @@ We implemented both CPU and GPU versions:
 
 - `Hist-CPU.cu`: Baseline CPU implementation. 16.069ms
 - `Hist-GPU.cu`: CUDA-based version with various optimizations.
+  1 gpu:71.326 ms
 
 In the GPU version, we tested:
 - Row-wise, column-wise, and block-wise kernels

@@ -15,7 +15,7 @@ using namespace std;
 unsigned char *image;
 int width, height, pixelWidth;
 
-__global__ void rgb2ycbcr_rowwise(unsigned char* d_image, int width, int height) {
+__global__ void rgb2ycbcr_rowwise(unsigned char* d_image, unsigned int* d_hist, int width, int height) {
     int row = blockIdx.x;
     int col = threadIdx.x;
 
@@ -32,6 +32,8 @@ __global__ void rgb2ycbcr_rowwise(unsigned char* d_image, int width, int height)
         d_image[idx + 0] = Y;
         d_image[idx + 1] = Cb;
         d_image[idx + 2] = Cr;
+
+        atomicAdd(&(d_hist[Y]), 1);  // now histogram is on GPU
     }
 }
 
@@ -60,49 +62,50 @@ __global__ void equalize_and_reconstruct_rowwise(unsigned char* d_image, int* d_
 int eq_GPU(unsigned char* image) {
     int image_size = width * height * pixelWidth;
     unsigned char* d_image;
+    unsigned int* d_hist;
 
     cudaMalloc(&d_image, image_size);
     cudaMemcpy(d_image, image, image_size, cudaMemcpyHostToDevice);
 
+    cudaMalloc(&d_hist, 256 * sizeof(unsigned int));
+    cudaMemset(d_hist, 0, 256 * sizeof(unsigned int));
+
     dim3 grid(height);
     dim3 block(width);
 
-    // Step 1: RGB → YCbCr (row-wise)
-    rgb2ycbcr_rowwise<<<grid, block>>>(d_image, width, height);
+    // Step 1: RGB → YCbCr and build histogram (row-wise)
+    rgb2ycbcr_rowwise<<<grid, block>>>(d_image, d_hist, width, height);
     cudaDeviceSynchronize();
 
-    // Save intermediate original (YCbCr) image
+    // Copy back the modified YCbCr image to CPU
     cudaMemcpy(image, d_image, image_size, cudaMemcpyDeviceToHost);
-    stbi_write_png("output_original_YCbCr.png", width, height, pixelWidth, image, 0);
+    stbi_write_png("output_original.png", width, height, pixelWidth, image, 0);
 
-    // Step 2: Histogram + CDF on CPU
-    int histogram[256] = {0};
-    for (int i = 0; i < width * height * 3; i += 3) {
-        int Y = image[i];
-        histogram[Y]++;
-    }
+    // Copy histogram back to CPU
+    unsigned int h_hist[256] = {0};
+    cudaMemcpy(h_hist, d_hist, 256 * sizeof(unsigned int), cudaMemcpyDeviceToHost);
 
-    int cdf[256] = {0};
+    // Compute CDF on CPU
+    int h_cdf[256] = {0};
     int sum = 0;
     for (int i = 0; i < 256; i++) {
-        sum += histogram[i];
-        cdf[i] = (int)((((float)sum - histogram[0]) / ((float)(width * height - 1))) * 255);
+        sum += h_hist[i];
+        h_cdf[i] = (int)((((float)sum - h_hist[0]) / ((float)(width * height - 1))) * 255);
     }
-
-    // Copy back the modified YCbCr image
-    cudaMemcpy(d_image, image, image_size, cudaMemcpyHostToDevice);
 
     // Copy CDF to GPU
     int* d_cdf;
     cudaMalloc(&d_cdf, 256 * sizeof(int));
-    cudaMemcpy(d_cdf, cdf, 256 * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_cdf, h_cdf, 256 * sizeof(int), cudaMemcpyHostToDevice);
 
-    // Step 3: Equalize and reconstruct RGB (row-wise)
+    // Step 2: Apply equalization and convert to RGB (row-wise)
     equalize_and_reconstruct_rowwise<<<grid, block>>>(d_image, d_cdf, width, height);
     cudaDeviceSynchronize();
 
     cudaMemcpy(image, d_image, image_size, cudaMemcpyDeviceToHost);
+
     cudaFree(d_image);
+    cudaFree(d_hist);
     cudaFree(d_cdf);
 
     return 0;
@@ -130,7 +133,8 @@ int main(int argc, char** argv) {
     long micros  = end.tv_usec - start.tv_usec;
     double elapsed_ms = seconds * 1000.0 + micros / 1000.0;
 
-    printf(" GPU histogram equalization done in %.3f ms\\n", elapsed_ms);
+    printf("GPU full row-wise histogram equalization done in %.3f ms\\n", elapsed_ms);
+
     stbi_write_png(output, width, height, pixelWidth, image, 0);
     stbi_image_free(image);
 

@@ -98,7 +98,7 @@ static int eq_CPU(unsigned char *input_ptr){
 int main(int argc, char** argv)
 {
     char input[] = "./IMG/IMG01.jpg";
-    char output[] = "out_seq.jpg";
+    char output[] = "output_original.jpg";
     
     if (loadImg(input, output) == 0);
     else
@@ -122,7 +122,7 @@ int main(int argc, char** argv)
     string output_name;
     //Save the image
     printf("Saving output image..\n");
-    output_name = "output_pixel_CPU.jpg";
+    output_name = "output_CPU.jpg";
 
     const char* name2 = output_name.c_str();
     stbi_write_png(name2 ,width,height,pixelWidth,image,0);

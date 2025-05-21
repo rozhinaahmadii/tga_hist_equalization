@@ -73,7 +73,7 @@ int eq_GPU(unsigned char* image) {
 
     // Save intermediate original (YCbCr) image
     cudaMemcpy(image, d_image, image_size, cudaMemcpyDeviceToHost);
-    stbi_write_png("output_original.png", width, height, pixelWidth, image, 0);
+    stbi_write_png("output_original_YCbCr.png", width, height, pixelWidth, image, 0);
 
     // Step 2: Histogram + CDF on CPU
     int histogram[256] = {0};

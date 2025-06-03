@@ -188,6 +188,8 @@ int eq_GPU(unsigned char* image) {
 }
 
 int main(int argc, char** argv) {
+    struct timeval start, end;
+    gettimeofday(&start, NULL);
     const char* input = "./IMG/IMG00.jpg";
     const char* output = "output_equalized_gpu_global.png";
 
@@ -199,10 +201,13 @@ int main(int argc, char** argv) {
 
     printf("Loaded image: %s (Width: %d, Height: %d, Channels: %d)\n", input, width, height, pixelWidth);
 
-    struct timeval start, end;
-    gettimeofday(&start, NULL);
+    
 
     eq_GPU(image);
+
+    
+    stbi_write_png(output, width, height, pixelWidth, image, 0);
+    stbi_image_free(image);
 
     gettimeofday(&end, NULL);
     long seconds = end.tv_sec - start.tv_sec;
@@ -211,8 +216,6 @@ int main(int argc, char** argv) {
 
     printf("✅ GPU histogram equalization with blur (global mem) done in %.3f ms\n", elapsed_ms);
 
-    stbi_write_png(output, width, height, pixelWidth, image, 0);
-    stbi_image_free(image);
 
     return 0;
 }

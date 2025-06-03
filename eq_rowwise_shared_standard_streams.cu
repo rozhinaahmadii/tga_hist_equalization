@@ -1,3 +1,6 @@
+// eq_rowwise_shared_streamed.cu
+// Shared memory histogram + CUDA Streams strategy (based on existing shared standard code)
+
 #include <iostream>
 #include <numeric>
 #include <stdlib.h>
@@ -15,9 +18,10 @@ using namespace std;
 unsigned char *image;
 int width, height, pixelWidth;
 
-__global__ void rgb2ycbcr_rowwise(unsigned char* d_image, unsigned int* d_hist, int width, int height, int row_offset) {
+// Kernel: RGB → YCbCr
+__global__ void rgb2ycbcr_shared(unsigned char* d_image, int width, int height) {
     int col = blockIdx.x * blockDim.x + threadIdx.x;
-    int row = blockIdx.y * blockDim.y + threadIdx.y + row_offset;
+    int row = blockIdx.y * blockDim.y + threadIdx.y;
 
     if (row < height && col < width) {
         int idx = (row * width + col) * 3;
@@ -32,14 +36,13 @@ __global__ void rgb2ycbcr_rowwise(unsigned char* d_image, unsigned int* d_hist, 
         d_image[idx + 0] = Y;
         d_image[idx + 1] = Cb;
         d_image[idx + 2] = Cr;
-
-        atomicAdd(&(d_hist[Y]), 1);
     }
 }
 
-__global__ void blur_Y_channel(unsigned char* d_image, unsigned char* d_blurred, int width, int height, int row_offset) {
+// Blur Y
+__global__ void blur_Y(unsigned char* d_image, unsigned char* d_out, int width, int height) {
     int col = blockIdx.x * blockDim.x + threadIdx.x;
-    int row = blockIdx.y * blockDim.y + threadIdx.y + row_offset;
+    int row = blockIdx.y * blockDim.y + threadIdx.y;
 
     if (row >= 1 && row < height - 1 && col >= 1 && col < width - 1) {
         float sum = 0.0f;
@@ -51,42 +54,40 @@ __global__ void blur_Y_channel(unsigned char* d_image, unsigned char* d_blurred,
                 sum += d_image[idx + 0];
             }
         }
-        int out_idx = (row * width + col) * 3;
-        d_blurred[out_idx + 0] = (unsigned char)(sum / 9.0f);
-        d_blurred[out_idx + 1] = d_image[out_idx + 1];
-        d_blurred[out_idx + 2] = d_image[out_idx + 2];
+        int idx = (row * width + col) * 3;
+        d_out[idx + 0] = (unsigned char)(sum / 9.0f);
+        d_out[idx + 1] = d_image[idx + 1];
+        d_out[idx + 2] = d_image[idx + 2];
     }
 }
 
-__global__ void histogram_shared(unsigned char* d_image, unsigned int* d_hist, int width, int height, int row_offset) {
+// Shared memory histogram
+__global__ void histogram_shared(unsigned char* d_image, unsigned int* d_hist, int width, int height) {
     __shared__ unsigned int local_hist[256];
     int tid = threadIdx.y * blockDim.x + threadIdx.x;
-    for (int i = tid; i < 256; i += blockDim.x * blockDim.y)
-        local_hist[i] = 0;
+    for (int i = tid; i < 256; i += blockDim.x * blockDim.y) local_hist[i] = 0;
     __syncthreads();
 
     int col = blockIdx.x * blockDim.x + threadIdx.x;
-    int row = blockIdx.y * blockDim.y + threadIdx.y + row_offset;
-
+    int row = blockIdx.y * blockDim.y + threadIdx.y;
     if (row < height && col < width) {
         int idx = (row * width + col) * 3;
-        unsigned char Y = d_image[idx + 0];
-        atomicAdd(&local_hist[Y], 1);
+        atomicAdd(&local_hist[d_image[idx + 0]], 1);
     }
-
     __syncthreads();
 
     for (int i = tid; i < 256; i += blockDim.x * blockDim.y)
         atomicAdd(&d_hist[i], local_hist[i]);
 }
 
-__global__ void equalize_and_reconstruct_rowwise(unsigned char* d_image, int* d_cdf, int width, int height) {
+// Reconstruct
+__global__ void equalize_and_reconstruct(unsigned char* d_image, int* d_cdf, int width, int height) {
     int col = blockIdx.x * blockDim.x + threadIdx.x;
     int row = blockIdx.y * blockDim.y + threadIdx.y;
 
     if (row < height && col < width) {
         int idx = (row * width + col) * 3;
-        int Y  = d_image[idx + 0];
+        int Y = d_image[idx + 0];
         int Cb = d_image[idx + 1];
         int Cr = d_image[idx + 2];
 
@@ -101,115 +102,63 @@ __global__ void equalize_and_reconstruct_rowwise(unsigned char* d_image, int* d_
     }
 }
 
-int eq_GPU_streams(unsigned char* h_image) {
+int main(int argc, char** argv) {
+    const char* input = "./IMG/IMG00.jpg";
+    const char* output = "output_shared_streamed.png";
+
+    image = stbi_load(input, &width, &height, &pixelWidth, 0);
+    if (!image) return -1;
+
     int image_size = width * height * pixelWidth;
-    unsigned char *d_image, *d_blurred;
-    unsigned int *d_hist1, *d_hist2;
-    unsigned int h_hist1[256] = {0}, h_hist2[256] = {0};
+    unsigned char *d_image, *d_blur;
+    unsigned int* d_hist;
+
+    cudaMalloc(&d_image, image_size);
+    cudaMemcpy(d_image, image, image_size, cudaMemcpyHostToDevice);
+    cudaMalloc(&d_blur, image_size);
+    cudaMalloc(&d_hist, 256 * sizeof(unsigned int));
+    cudaMemset(d_hist, 0, 256 * sizeof(unsigned int));
+
+    int* d_cdf;
+    cudaMalloc(&d_cdf, 256 * sizeof(int));
+
+    dim3 block(32, 32);
+    dim3 grid((width + 31) / 32, (height + 31) / 32);
 
     cudaStream_t stream1, stream2;
     cudaStreamCreate(&stream1);
     cudaStreamCreate(&stream2);
 
-    cudaMalloc((void**)&d_image, image_size);
-    cudaMalloc((void**)&d_blurred, image_size);
-    cudaMalloc((void**)&d_hist1, 256 * sizeof(unsigned int));
-    cudaMalloc((void**)&d_hist2, 256 * sizeof(unsigned int));
-    cudaMemset(d_hist1, 0, 256 * sizeof(unsigned int));
-    cudaMemset(d_hist2, 0, 256 * sizeof(unsigned int));
+    rgb2ycbcr_shared<<<grid, block, 0, stream1>>>(d_image, width, height);
+    blur_Y<<<grid, block, 0, stream2>>>(d_image, d_blur, width, height);
 
-    cudaMemcpyAsync(d_image, h_image, image_size, cudaMemcpyHostToDevice, stream1);
-
-    dim3 block(32, 32);
-    dim3 grid((width + 31) / 32, (height / 2 + 31) / 32);
-
-    // CUDA timing
-    cudaEvent_t start, stop;
-    cudaEventCreate(&start);
-    cudaEventCreate(&stop);
-    cudaEventRecord(start);
-
-    // Top half
-    rgb2ycbcr_rowwise<<<grid, block, 0, stream1>>>(d_image, d_hist1, width, height, 0);
-    blur_Y_channel<<<grid, block, 0, stream1>>>(d_image, d_blurred, width, height, 0);
-    histogram_shared<<<grid, block, 0, stream1>>>(d_blurred, d_hist1, width, height, 0);
-
-    // Bottom half
-    rgb2ycbcr_rowwise<<<grid, block, 0, stream2>>>(d_image, d_hist2, width, height, height / 2);
-    blur_Y_channel<<<grid, block, 0, stream2>>>(d_image, d_blurred, width, height, height / 2);
-    histogram_shared<<<grid, block, 0, stream2>>>(d_blurred, d_hist2, width, height, height / 2);
-
-    // Sync both halves
     cudaStreamSynchronize(stream1);
     cudaStreamSynchronize(stream2);
 
-    // Final stage
-    cudaMemcpyAsync(d_image, d_blurred, image_size, cudaMemcpyDeviceToDevice, stream1);
-    cudaMemcpy(h_hist1, d_hist1, 256 * sizeof(unsigned int), cudaMemcpyDeviceToHost);
-    cudaMemcpy(h_hist2, d_hist2, 256 * sizeof(unsigned int), cudaMemcpyDeviceToHost);
+    cudaMemcpy(d_image, d_blur, image_size, cudaMemcpyDeviceToDevice);
+    histogram_shared<<<grid, block>>>(d_image, d_hist, width, height);
 
-    unsigned int h_hist[256];
-    for (int i = 0; i < 256; i++)
-        h_hist[i] = h_hist1[i] + h_hist2[i];
-
-    int h_cdf[256], sum = 0;
+    unsigned int h_hist[256] = {0};
+    cudaMemcpy(h_hist, d_hist, 256 * sizeof(unsigned int), cudaMemcpyDeviceToHost);
+    int h_cdf[256] = {0}, sum = 0;
     for (int i = 0; i < 256; i++) {
         sum += h_hist[i];
         h_cdf[i] = (int)((((float)sum - h_hist[0]) / ((float)(width * height - 1))) * 255);
     }
-
-    int* d_cdf;
-    cudaMalloc((void**)&d_cdf, 256 * sizeof(int));
     cudaMemcpy(d_cdf, h_cdf, 256 * sizeof(int), cudaMemcpyHostToDevice);
 
-    dim3 fullGrid((width + 31) / 32, (height + 31) / 32);
-    equalize_and_reconstruct_rowwise<<<fullGrid, block>>>(d_image, d_cdf, width, height);
-    cudaMemcpy(h_image, d_image, image_size, cudaMemcpyDeviceToHost);
+    equalize_and_reconstruct<<<grid, block>>>(d_image, d_cdf, width, height);
+    cudaMemcpy(image, d_image, image_size, cudaMemcpyDeviceToHost);
 
-    cudaEventRecord(stop);
-    cudaEventSynchronize(stop);
-    float elapsed = 0;
-    cudaEventElapsedTime(&elapsed, start, stop);
+    stbi_write_png(output, width, height, pixelWidth, image, 0);
+    stbi_image_free(image);
 
-    printf("\n=== Streamed GPU Performance Report (Standard Memory) ===\n");
-    printf("🔄 Total kernel + transfer time (CUDA): %.3f ms\n", elapsed);
-    printf("=========================================================\n\n");
-
-    // Cleanup
     cudaFree(d_image);
-    cudaFree(d_blurred);
-    cudaFree(d_hist1);
-    cudaFree(d_hist2);
+    cudaFree(d_blur);
+    cudaFree(d_hist);
     cudaFree(d_cdf);
     cudaStreamDestroy(stream1);
     cudaStreamDestroy(stream2);
-
-    return 0;
-}
-
-int main(int argc, char** argv) {
-    const char* input = "./IMG/IMG00.jpg";
-    const char* output = "output_standard_streams_fixed.png";
-
-    image = stbi_load(input, &width, &height, &pixelWidth, 0);
-    if (!image) {
-        fprintf(stderr, "❌ Couldn't load image.\n");
-        return -1;
-    }
-
-    printf("📷 Loaded image: %s (W: %d, H: %d, C: %d)\n", input, width, height, pixelWidth);
-
-    struct timeval start, end;
-    gettimeofday(&start, NULL);
-    eq_GPU_streams(image);
-    gettimeofday(&end, NULL);
-    long seconds = end.tv_sec - start.tv_sec;
-    long micros  = end.tv_usec - start.tv_usec;
-    double elapsed_ms = seconds * 1000.0 + micros / 1000.0;
-
-    printf("✅ Full runtime (wall clock): %.3f ms\n", elapsed_ms);
-    stbi_write_png(output, width, height, pixelWidth, image, 0);
-    stbi_image_free(image);
 
     return 0;
 }

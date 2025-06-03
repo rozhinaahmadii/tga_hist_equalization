@@ -6,7 +6,7 @@
 // 3. Synchronize all streams.
 // 4. Compute a single global histogram and CDF.
 // 5. Launch equalization and RGB reconstruction per tile in streams.
-// 6. Record performance using CUDA Events + std::chrono for total runtime.
+// 6. Record performance using CUDA Events + std::chrono for total runtime and detailed kernel timings.
 
 #include <iostream>
 #include <numeric>
@@ -125,11 +125,11 @@ void process_image_with_streams(unsigned char* h_image) {
     for (int i = 0; i < streamCount; i++) cudaStreamCreate(&streams[i]);
 
     dim3 block(32, 32);
-    dim3 grid((width + 31) / 32, (tileHeight + 1 + 31) / 32); // +1 for overlap
+    dim3 grid((width + 31) / 32, (tileHeight + 1 + 31) / 32);
 
-    cudaEvent_t start, stop;
-    cudaEventCreate(&start); cudaEventCreate(&stop);
-    cudaEventRecord(start);
+    cudaEvent_t t1, t2, t3, t4;
+    cudaEventCreate(&t1); cudaEventCreate(&t2); cudaEventCreate(&t3); cudaEventCreate(&t4);
+    cudaEventRecord(t1);
 
     for (int i = 0; i < streamCount; i++) {
         int yOffset = i * tileHeight - (i > 0 ? overlap : 0);
@@ -143,13 +143,13 @@ void process_image_with_streams(unsigned char* h_image) {
     }
 
     for (int i = 0; i < streamCount; i++) cudaStreamSynchronize(streams[i]);
+    cudaEventRecord(t2);
 
     unsigned int* d_hist;
     cudaMalloc(&d_hist, 256 * sizeof(unsigned int));
     cudaMemset(d_hist, 0, 256 * sizeof(unsigned int));
-
-    dim3 fullGrid((width + 31) / 32, (height + 31) / 32);
-    histogram_kernel<<<fullGrid, block>>>(d_blur, d_hist, width, height);
+    histogram_kernel<<<dim3((width + 31) / 32, (height + 31) / 32), block>>>(d_blur, d_hist, width, height);
+    cudaEventRecord(t3);
 
     unsigned int h_hist[256];
     cudaMemcpy(h_hist, d_hist, 256 * sizeof(unsigned int), cudaMemcpyDeviceToHost);
@@ -172,15 +172,21 @@ void process_image_with_streams(unsigned char* h_image) {
     }
 
     for (int i = 0; i < streamCount; i++) cudaStreamSynchronize(streams[i]);
+    cudaEventRecord(t4);
 
     cudaMemcpy(h_image, d_blur, imgSize, cudaMemcpyDeviceToHost);
 
-    cudaEventRecord(stop);
-    cudaEventSynchronize(stop);
-    float kernelTime;
-    cudaEventElapsedTime(&kernelTime, start, stop);
+    float dt1, dt2, dt3, dt4;
+    cudaEventElapsedTime(&dt1, t1, t2);
+    cudaEventElapsedTime(&dt2, t2, t3);
+    cudaEventElapsedTime(&dt3, t3, t4);
+    cudaEventElapsedTime(&dt4, t1, t4);
 
-    printf("🔄 Kernel time (streams): %.3f ms\n", kernelTime);
+    printf("\n=== Shared Memory + Streams Report ===\n");
+    printf("🔵 RGB → YCbCr + Blur : %.3f ms\n", dt1);
+    printf("🟣 Histogram time     : %.3f ms\n", dt2);
+    printf("🟢 Equalize time      : %.3f ms\n", dt3);
+    printf("🔷 Total kernel time  : %.3f ms\n", dt4);
     for (int i = 0; i < streamCount; i++) cudaStreamDestroy(streams[i]);
     cudaFree(d_img); cudaFree(d_blur); cudaFree(d_hist); cudaFree(d_cdf);
 }
@@ -202,7 +208,8 @@ int main() {
     process_image_with_streams(image);
     auto end = chrono::high_resolution_clock::now();
     chrono::duration<double, std::milli> elapsed = end - start;
-    printf("✅ Full process time: %.3f ms\n", elapsed.count());
+    printf("✅ Full process time   : %.3f ms\n", elapsed.count());
+    printf("======================================\n\n");
 
     stbi_write_png(output, width, height, pixelWidth, image, 0);
     stbi_image_free(image);

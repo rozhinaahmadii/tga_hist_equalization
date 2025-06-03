@@ -118,13 +118,12 @@ int eq_GPU_streams(unsigned char* h_image) {
     cudaMemset(d_hist1, 0, 256 * sizeof(unsigned int));
     cudaMemset(d_hist2, 0, 256 * sizeof(unsigned int));
 
-    // Transfer to device using streams
     cudaMemcpyAsync(d_image, h_image, image_size, cudaMemcpyHostToDevice, stream1);
 
     dim3 block(32, 32);
-    dim3 grid((width + 31) / 32, (height / 2 + 31) / 32); // Half image per stream
+    dim3 grid((width + 31) / 32, (height / 2 + 31) / 32);
 
-    // Timing
+    // CUDA timing
     cudaEvent_t start, stop;
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
@@ -140,10 +139,12 @@ int eq_GPU_streams(unsigned char* h_image) {
     blur_Y_channel<<<grid, block, 0, stream2>>>(d_image, d_blurred, width, height, height / 2);
     histogram_shared<<<grid, block, 0, stream2>>>(d_blurred, d_hist2, width, height, height / 2);
 
-    cudaMemcpyAsync(d_image, d_blurred, image_size, cudaMemcpyDeviceToDevice, stream1);
+    // Sync both halves
     cudaStreamSynchronize(stream1);
     cudaStreamSynchronize(stream2);
 
+    // Final stage
+    cudaMemcpyAsync(d_image, d_blurred, image_size, cudaMemcpyDeviceToDevice, stream1);
     cudaMemcpy(h_hist1, d_hist1, 256 * sizeof(unsigned int), cudaMemcpyDeviceToHost);
     cudaMemcpy(h_hist2, d_hist2, 256 * sizeof(unsigned int), cudaMemcpyDeviceToHost);
 
@@ -151,7 +152,6 @@ int eq_GPU_streams(unsigned char* h_image) {
     for (int i = 0; i < 256; i++)
         h_hist[i] = h_hist1[i] + h_hist2[i];
 
-    // CDF
     int h_cdf[256], sum = 0;
     for (int i = 0; i < 256; i++) {
         sum += h_hist[i];
@@ -160,56 +160,4 @@ int eq_GPU_streams(unsigned char* h_image) {
 
     int* d_cdf;
     cudaMalloc((void**)&d_cdf, 256 * sizeof(int));
-    cudaMemcpy(d_cdf, h_cdf, 256 * sizeof(int), cudaMemcpyHostToDevice);
-
-    dim3 fullGrid((width + 31) / 32, (height + 31) / 32);
-    equalize_and_reconstruct_rowwise<<<fullGrid, block>>>(d_image, d_cdf, width, height);
-
-    cudaMemcpy(h_image, d_image, image_size, cudaMemcpyDeviceToHost);
-
-    cudaEventRecord(stop);
-    cudaEventSynchronize(stop);
-    float elapsed = 0;
-    cudaEventElapsedTime(&elapsed, start, stop);
-
-    printf("\n=== Streamed GPU Performance Report (Standard Memory) ===\n");
-    printf("🔄 Total kernel + transfer time (streams): %.3f ms\n", elapsed);
-    printf("=========================================================\n\n");
-
-    cudaFree(d_image);
-    cudaFree(d_blurred);
-    cudaFree(d_hist1);
-    cudaFree(d_hist2);
-    cudaFree(d_cdf);
-    cudaStreamDestroy(stream1);
-    cudaStreamDestroy(stream2);
-
-    return 0;
-}
-
-int main(int argc, char** argv) {
-    const char* input = "./IMG/IMG00.jpg";
-    const char* output = "output_standard_streams.png";
-
-    image = stbi_load(input, &width, &height, &pixelWidth, 0);
-    if (!image) {
-        fprintf(stderr, "❌ Couldn't load image.\n");
-        return -1;
-    }
-
-    printf("📷 Loaded image: %s (W: %d, H: %d, C: %d)\n", input, width, height, pixelWidth);
-
-    struct timeval start, end;
-    gettimeofday(&start, NULL);
-    eq_GPU_streams(image);
-    gettimeofday(&end, NULL);
-    long seconds = end.tv_sec - start.tv_sec;
-    long micros  = end.tv_usec - start.tv_usec;
-    double elapsed_ms = seconds * 1000.0 + micros / 1000.0;
-
-    printf("✅ Full process time: %.3f ms\n", elapsed_ms);
-    stbi_write_png(output, width, height, pixelWidth, image, 0);
-    stbi_image_free(image);
-
-    return 0;
-}
+    cudaMemcpy(d_cdf, h_cdf, 256 * sizeof(int*

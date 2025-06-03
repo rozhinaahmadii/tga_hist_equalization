@@ -109,9 +109,13 @@ __global__ void equalize_and_reconstruct_rowwise(unsigned char* d_image, int* d_
 }
 
 int eq_GPU(unsigned char* image) {
+    struct timeval start_total, end_total;
+    gettimeofday(&start_total, NULL);
+
     int image_size = width * height * pixelWidth;
     unsigned char *d_image, *d_blurred;
     unsigned int* d_hist;
+
 
     cudaMalloc(&d_image, image_size);
     cudaMemcpy(d_image, image, image_size, cudaMemcpyHostToDevice);
@@ -193,6 +197,13 @@ int eq_GPU(unsigned char* image) {
     cudaFree(d_blurred);
     cudaFree(d_hist);
     cudaFree(d_cdf);
+
+    gettimeofday(&end_total, NULL);
+    long total_sec = end_total.tv_sec - start_total.tv_sec;
+    long total_usec = end_total.tv_usec - start_total.tv_usec;
+    double total_elapsed_ms = total_sec * 1000.0 + total_usec / 1000.0;
+    
+    printf("🕒 Total GPU execution time (gettimeofday): %.3f ms\n", total_elapsed_ms);
 
     return 0;
 }

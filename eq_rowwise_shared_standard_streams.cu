@@ -91,6 +91,9 @@ __global__ void equalize_and_reconstruct(unsigned char* d_image, int* d_cdf, int
 
 // MAIN
 int main(int argc, char** argv) {
+    struct timeval start_total, end_total;
+    gettimeofday(&start_total, NULL);
+
     const char* input = "./IMG/IMG00.jpg";
     const char* output = "output_rowwise_shared_streamed.png";
 
@@ -118,8 +121,6 @@ int main(int argc, char** argv) {
     cudaStreamCreate(&s2);
 
     // Timers
-    struct timeval start_total, end_total;
-    gettimeofday(&start_total, NULL);
 
     cudaEvent_t start1, stop1, start2, stop2, start3, stop3, start4, stop4;
     cudaEventCreate(&start1); cudaEventCreate(&stop1);
@@ -165,10 +166,7 @@ int main(int argc, char** argv) {
 
     cudaMemcpy(image, d_image, image_size, cudaMemcpyDeviceToHost);
 
-    gettimeofday(&end_total, NULL);
-    long sec = end_total.tv_sec - start_total.tv_sec;
-    long usec = end_total.tv_usec - start_total.tv_usec;
-    double total_time = sec * 1000.0 + usec / 1000.0;
+
 
     float t1, t2, t3, t4;
     cudaEventElapsedTime(&t1, start1, stop1);
@@ -182,7 +180,7 @@ int main(int argc, char** argv) {
     printf("🟣 Histogram shared : %.3f ms\n", t3);
     printf("🟢 Equalize+RGB     : %.3f ms\n", t4);
     printf("🔷 Total kernel time: %.3f ms\n", t1 + t2 + t3 + t4);
-    printf("🕒 Total runtime    : %.3f ms\n", total_time);
+
     printf("======================================\n");
 
     // Save and cleanup
@@ -194,6 +192,10 @@ int main(int argc, char** argv) {
     cudaFree(d_cdf);
     cudaStreamDestroy(s1);
     cudaStreamDestroy(s2);
+        gettimeofday(&end_total, NULL);
+    long sec = end_total.tv_sec - start_total.tv_sec;
+    long usec = end_total.tv_usec - start_total.tv_usec;
+    double total_time = sec * 1000.0 + usec / 1000.0;    printf("🕒 Total runtime    : %.3f ms\n", total_time);
 
     return 0;
 }

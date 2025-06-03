@@ -80,9 +80,9 @@ __global__ void equalize_and_reconstruct(unsigned char* d_image, int* d_cdf, int
         int Cb = d_image[idx + 1];
         int Cr = d_image[idx + 2];
         int new_Y = d_cdf[Y];
-        int R = min(255, max(0, new_Y + 1.402 * (Cr - 128)));
-        int G = min(255, max(0, new_Y - 0.344136 * (Cb - 128) - 0.714136 * (Cr - 128)));
-        int B = min(255, max(0, new_Y + 1.772 * (Cb - 128)));
+        int R = min(255, max(0, (int)(new_Y + 1.402 * (Cr - 128))));
+        int G = min(255, max(0, (int)(new_Y - 0.344136 * (Cb - 128) - 0.714136 * (Cr - 128))));
+        int B = min(255, max(0, (int)(new_Y + 1.772 * (Cb - 128))));
         d_image[idx + 0] = R;
         d_image[idx + 1] = G;
         d_image[idx + 2] = B;

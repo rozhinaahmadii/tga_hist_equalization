@@ -160,4 +160,56 @@ int eq_GPU_streams(unsigned char* h_image) {
 
     int* d_cdf;
     cudaMalloc((void**)&d_cdf, 256 * sizeof(int));
-    cudaMemcpy(d_cdf, h_cdf, 256 * sizeof(int*
+    cudaMemcpy(d_cdf, h_cdf, 256 * sizeof(int), cudaMemcpyHostToDevice);
+
+    dim3 fullGrid((width + 31) / 32, (height + 31) / 32);
+    equalize_and_reconstruct_rowwise<<<fullGrid, block>>>(d_image, d_cdf, width, height);
+    cudaMemcpy(h_image, d_image, image_size, cudaMemcpyDeviceToHost);
+
+    cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
+    float elapsed = 0;
+    cudaEventElapsedTime(&elapsed, start, stop);
+
+    printf("\n=== Streamed GPU Performance Report (Standard Memory) ===\n");
+    printf("🔄 Total kernel + transfer time (CUDA): %.3f ms\n", elapsed);
+    printf("=========================================================\n\n");
+
+    // Cleanup
+    cudaFree(d_image);
+    cudaFree(d_blurred);
+    cudaFree(d_hist1);
+    cudaFree(d_hist2);
+    cudaFree(d_cdf);
+    cudaStreamDestroy(stream1);
+    cudaStreamDestroy(stream2);
+
+    return 0;
+}
+
+int main(int argc, char** argv) {
+    const char* input = "./IMG/IMG00.jpg";
+    const char* output = "output_standard_streams_fixed.png";
+
+    image = stbi_load(input, &width, &height, &pixelWidth, 0);
+    if (!image) {
+        fprintf(stderr, "❌ Couldn't load image.\n");
+        return -1;
+    }
+
+    printf("📷 Loaded image: %s (W: %d, H: %d, C: %d)\n", input, width, height, pixelWidth);
+
+    struct timeval start, end;
+    gettimeofday(&start, NULL);
+    eq_GPU_streams(image);
+    gettimeofday(&end, NULL);
+    long seconds = end.tv_sec - start.tv_sec;
+    long micros  = end.tv_usec - start.tv_usec;
+    double elapsed_ms = seconds * 1000.0 + micros / 1000.0;
+
+    printf("✅ Full runtime (wall clock): %.3f ms\n", elapsed_ms);
+    stbi_write_png(output, width, height, pixelWidth, image, 0);
+    stbi_image_free(image);
+
+    return 0;
+}

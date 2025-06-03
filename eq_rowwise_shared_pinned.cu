@@ -210,31 +210,39 @@ int main(int argc, char** argv) {
     const char* output = "output_equalized_gpu_pinned.png";
 
     int n_channels;
-    int size;
     unsigned char* raw = stbi_load(input, &width, &height, &n_channels, 0);
-    pixelWidth = n_channels;
-    size = width * height * pixelWidth;
+    if (!raw) {
+        fprintf(stderr, "❌ Couldn't load image.\n");
+        return -1;
+    }
 
+    pixelWidth = n_channels;
+    int size = width * height * pixelWidth;
+
+    // ✅ Allocate pinned memory and copy image
     cudaHostAlloc((void**)&image, size, cudaHostAllocDefault);
     memcpy(image, raw, size);
-    stbi_image_free(raw);
+    stbi_image_free(raw); // Free raw image right after copy
 
-    printf("Loaded image: %s (Width: %d, Height: %d, Channels: %d)\n", input, width, height, pixelWidth);
+    printf("📷 Loaded image: %s (Width: %d, Height: %d, Channels: %d)\n", input, width, height, pixelWidth);
 
-    struct timeval main_start, main_end;
-    gettimeofday(&main_start, NULL);
+    // ✅ Measure total runtime *after* data is in pinned memory
+    struct timeval start_main, end_main;
+    gettimeofday(&start_main, NULL);
 
-    eq_GPU(image);
-    cudaDeviceSynchronize();
+    eq_GPU(image);               // GPU execution
+    cudaDeviceSynchronize();     // ✅ Wait for everything
 
-    gettimeofday(&main_end, NULL);
-    long sec = main_end.tv_sec - main_start.tv_sec;
-    long usec = main_end.tv_usec - main_start.tv_usec;
-    double elapsed_main = sec * 1000.0 + usec / 1000.0;
-    printf("✅ GPU histogram equalization with blur (total main): %.3f ms\n", elapsed_main);
+    gettimeofday(&end_main, NULL);
+    long sec = end_main.tv_sec - start_main.tv_sec;
+    long usec = end_main.tv_usec - start_main.tv_usec;
+    double elapsed_ms = sec * 1000.0 + usec / 1000.0;
+    printf("✅ Total main() runtime (incl. GPU): %.3f ms\n", elapsed_ms);
 
+    // Save and cleanup
     stbi_write_png(output, width, height, pixelWidth, image, 0);
     cudaFreeHost(image);
 
     return 0;
 }
+

@@ -67,6 +67,7 @@ __global__ void histogram_shared(unsigned char* d_image, unsigned int* d_hist, i
 
     for (int i = tid; i < 256; i += blockDim.x * blockDim.y)
         local_hist[i] = 0;
+
     __syncthreads();
 
     int col = blockIdx.x * blockDim.x + threadIdx.x;
@@ -77,6 +78,7 @@ __global__ void histogram_shared(unsigned char* d_image, unsigned int* d_hist, i
         unsigned char Y = d_image[idx + 0];
         atomicAdd(&local_hist[Y], 1);
     }
+
     __syncthreads();
 
     for (int i = tid; i < 256; i += blockDim.x * blockDim.y)
@@ -111,13 +113,9 @@ int eq_GPU(unsigned char* image) {
     unsigned char *d_image, *d_blurred;
     unsigned int* d_hist;
 
-    cudaEvent_t startTotal, stopTotal;
-    cudaEventCreate(&startTotal);
-    cudaEventCreate(&stopTotal);
-    cudaEventRecord(startTotal);
-
     cudaMalloc(&d_image, image_size);
     cudaMemcpy(d_image, image, image_size, cudaMemcpyHostToDevice);
+
     cudaMalloc(&d_blurred, image_size);
     cudaMalloc(&d_hist, 256 * sizeof(unsigned int));
     cudaMemset(d_hist, 0, 256 * sizeof(unsigned int));
@@ -126,32 +124,39 @@ int eq_GPU(unsigned char* image) {
     dim3 grid((width + block.x - 1) / block.x, (height + block.y - 1) / block.y);
 
     // Timers
-    cudaEvent_t startYCbCr, stopYCbCr, startBlur, stopBlur, startHist, stopHist, startEqualize, stopEqualize;
+    cudaEvent_t startYCbCr, stopYCbCr;
+    cudaEvent_t startBlur, stopBlur;
+    cudaEvent_t startHist, stopHist;
+    cudaEvent_t startEqualize, stopEqualize;
+
     cudaEventCreate(&startYCbCr);    cudaEventCreate(&stopYCbCr);
     cudaEventCreate(&startBlur);     cudaEventCreate(&stopBlur);
     cudaEventCreate(&startHist);     cudaEventCreate(&stopHist);
     cudaEventCreate(&startEqualize); cudaEventCreate(&stopEqualize);
 
+    // Step 1: RGB → YCbCr
     cudaEventRecord(startYCbCr);
     rgb2ycbcr_rowwise<<<grid, block>>>(d_image, d_hist, width, height);
     cudaEventRecord(stopYCbCr);
     cudaEventSynchronize(stopYCbCr);
 
+    // Step 2: Blur Y channel
     cudaEventRecord(startBlur);
     blur_Y_channel<<<grid, block>>>(d_image, d_blurred, width, height);
     cudaEventRecord(stopBlur);
     cudaEventSynchronize(stopBlur);
     cudaMemcpy(d_image, d_blurred, image_size, cudaMemcpyDeviceToDevice);
 
+    // Step 3: Histogram
     cudaMemset(d_hist, 0, 256 * sizeof(unsigned int));
     cudaEventRecord(startHist);
     histogram_shared<<<grid, block>>>(d_image, d_hist, width, height);
     cudaEventRecord(stopHist);
     cudaEventSynchronize(stopHist);
 
+    // Step 4: CPU-side CDF
     unsigned int h_hist[256] = {0};
     cudaMemcpy(h_hist, d_hist, 256 * sizeof(unsigned int), cudaMemcpyDeviceToHost);
-
     int h_cdf[256] = {0}, sum = 0;
     for (int i = 0; i < 256; i++) {
         sum += h_hist[i];
@@ -162,22 +167,19 @@ int eq_GPU(unsigned char* image) {
     cudaMalloc(&d_cdf, 256 * sizeof(int));
     cudaMemcpy(d_cdf, h_cdf, 256 * sizeof(int), cudaMemcpyHostToDevice);
 
+    // Step 5: Equalize
     cudaEventRecord(startEqualize);
     equalize_and_reconstruct_rowwise<<<grid, block>>>(d_image, d_cdf, width, height);
     cudaEventRecord(stopEqualize);
     cudaEventSynchronize(stopEqualize);
 
     cudaMemcpy(image, d_image, image_size, cudaMemcpyDeviceToHost);
-    cudaEventRecord(stopTotal);
-    cudaEventSynchronize(stopTotal);
 
-    // Reporting
-    float tYCbCr = 0, tBlur = 0, tHist = 0, tEq = 0, tTotal = 0;
+    float tYCbCr = 0, tBlur = 0, tHist = 0, tEq = 0;
     cudaEventElapsedTime(&tYCbCr, startYCbCr, stopYCbCr);
     cudaEventElapsedTime(&tBlur, startBlur, stopBlur);
     cudaEventElapsedTime(&tHist, startHist, stopHist);
     cudaEventElapsedTime(&tEq, startEqualize, stopEqualize);
-    cudaEventElapsedTime(&tTotal, startTotal, stopTotal);
 
     printf("\n=== Kernel Performance Report ===\n");
     printf("🔵 RGB → YCbCr + initial hist: %.3f ms\n", tYCbCr);
@@ -185,28 +187,27 @@ int eq_GPU(unsigned char* image) {
     printf("🟣 Histogram (shared mem)   : %.3f ms\n", tHist);
     printf("🟢 Equalize + Reconstruct   : %.3f ms\n", tEq);
     printf("🔷 Total kernel time        : %.3f ms\n", tYCbCr + tBlur + tHist + tEq);
-    printf("⏱️  Total GPU-side time     : %.3f ms\n", tTotal);
     printf("=================================\n\n");
 
     cudaFree(d_image);
     cudaFree(d_blurred);
     cudaFree(d_hist);
     cudaFree(d_cdf);
-    cudaEventDestroy(startTotal);
-    cudaEventDestroy(stopTotal);
 
     return 0;
 }
 
 int main(int argc, char** argv) {
     const char* input = "./IMG/IMG00.jpg";
-    const char* output = "output_equalized_gpu_pinned_fixed.png";
+    const char* output = "output_equalized_gpu_pinned.png";
 
     int n_channels;
+    int size;
     unsigned char* raw = stbi_load(input, &width, &height, &n_channels, 0);
     pixelWidth = n_channels;
-    int size = width * height * pixelWidth;
+    size = width * height * pixelWidth;
 
+    // ✅ Pinned memory
     cudaHostAlloc((void**)&image, size, cudaHostAllocDefault);
     memcpy(image, raw, size);
     stbi_image_free(raw);
@@ -215,16 +216,19 @@ int main(int argc, char** argv) {
 
     struct timeval start, end;
     gettimeofday(&start, NULL);
-    eq_GPU(image);
-    gettimeofday(&end, NULL);
 
+    eq_GPU(image);
+    cudaDeviceSynchronize();  // ✅ ensure device work is done
+
+    gettimeofday(&end, NULL);
     long seconds = end.tv_sec - start.tv_sec;
     long micros  = end.tv_usec - start.tv_usec;
     double elapsed_ms = seconds * 1000.0 + micros / 1000.0;
 
-    printf("✅ Host-side total time (main): %.3f ms\n", elapsed_ms);
+    printf("✅ GPU histogram equalization with blur (shared + pinned) done in %.3f ms\n", elapsed_ms);
 
     stbi_write_png(output, width, height, pixelWidth, image, 0);
     cudaFreeHost(image);
+
     return 0;
 }

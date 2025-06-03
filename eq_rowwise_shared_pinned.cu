@@ -110,6 +110,7 @@ __global__ void equalize_and_reconstruct_rowwise(unsigned char* d_image, int* d_
 
 int eq_GPU(unsigned char* image) {
     struct timeval start_total, end_total;
+    cudaDeviceSynchronize();
     gettimeofday(&start_total, NULL);
 
     int image_size = width * height * pixelWidth;
@@ -206,6 +207,7 @@ int eq_GPU(unsigned char* image) {
 }
 
 int main(int argc, char** argv) {
+    cudaFree(0);
     const char* input = "./IMG/IMG00.jpg";
     const char* output = "output_equalized_gpu_pinned.png";
 
@@ -225,6 +227,7 @@ int main(int argc, char** argv) {
     stbi_image_free(raw); // Free raw image right after copy
 
     printf("📷 Loaded image: %s (Width: %d, Height: %d, Channels: %d)\n", input, width, height, pixelWidth);
+    printf("Image: %d x %d, Channels: %d, Size: %d\n", width, height, pixelWidth, size);
 
     // ✅ Measure total runtime *after* data is in pinned memory
     struct timeval start_main, end_main;

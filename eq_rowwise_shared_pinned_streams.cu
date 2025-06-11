@@ -193,8 +193,6 @@ void process_image_with_streams(unsigned char* h_image) {
 
 // MAIN
 int main() {
-    struct timeval start_total, end_total;
-    gettimeofday(&start_total, NULL);
     const char* input = "./IMG/IMG00.jpg";
     const char* output = "output_final_streamed.png";
 
@@ -207,17 +205,20 @@ int main() {
     printf("📷 Loaded image: %s (W: %d, H: %d, C: %d)\n", input, width, height, pixelWidth);
 
     auto start = chrono::high_resolution_clock::now();
+    struct timeval start_total, end_total;
+    gettimeofday(&start_total, NULL);
     process_image_with_streams(image);
     auto end = chrono::high_resolution_clock::now();
+    gettimeofday(&end_total, NULL);
+    long sec = end_total.tv_sec - start_total.tv_sec;
+    long usec = end_total.tv_usec - start_total.tv_usec;
+    double total_time = sec * 1000.0 + usec / 1000.0;    printf("🕒 Total runtime    : %.3f ms\n", total_time);
     chrono::duration<double, std::milli> elapsed = end - start;
     printf("✅ Full process time   : %.3f ms\n", elapsed.count());
     printf("======================================\n\n");
 
     stbi_write_png(output, width, height, pixelWidth, image, 0);
     stbi_image_free(image);
-    gettimeofday(&end_total, NULL);
-    long sec = end_total.tv_sec - start_total.tv_sec;
-    long usec = end_total.tv_usec - start_total.tv_usec;
-    double total_time = sec * 1000.0 + usec / 1000.0;    printf("🕒 Total runtime    : %.3f ms\n", total_time);
+
     return 0;
 }

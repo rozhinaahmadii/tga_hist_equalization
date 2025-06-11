@@ -63,11 +63,13 @@ void run_gpu(int device_id, unsigned char* h_input, unsigned char* h_output, int
     unsigned char *d_input, *d_output;
     float* d_y;
     int* d_hist;
-    check(cudaMalloc((void**)&d_input, img_half_size), "d_input");
-    check(cudaMalloc((void**)&d_output, img_half_size), "d_output");
-    check(cudaMalloc((void**)&d_y, width * half_height * sizeof(float)), "d_y");
-    check(cudaMalloc((void**)&d_hist, 256 * sizeof(int)), "d_hist");
-    check(cudaMemset(d_hist, 0, 256 * sizeof(int)), "memset d_hist");
+
+    check(cudaMallocHost((void**)&d_input, img_half_size), "Pinned malloc d_input");
+    check(cudaMallocHost((void**)&d_output, img_half_size), "Pinned malloc d_output");
+
+    check(cudaMalloc((void**)&d_y, width * half_height * sizeof(float)), "Malloc d_y");
+    check(cudaMalloc((void**)&d_hist, 256 * sizeof(int)), "Malloc d_hist");
+    check(cudaMemset(d_hist, 0, 256 * sizeof(int)), "Memset d_hist");
 
     check(cudaMemcpy(d_input, h_input + device_id * img_half_size, img_half_size, cudaMemcpyHostToDevice), "H2D input");
 
@@ -81,12 +83,15 @@ void run_gpu(int device_id, unsigned char* h_input, unsigned char* h_output, int
     cudaEventRecord(start);
 
     rgb2ycbcr_rowwise<<<grid, block>>>(d_input, d_y, width, height, device_id * half_height);
+    cudaDeviceSynchronize();
+
     histogram_shared<<<grid, block>>>(d_y, d_hist, width, half_height);
+    cudaDeviceSynchronize();
 
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&elapsed, start, stop);
-    printf("[GPU %d] Kernel time: %f ms\n", device_id, elapsed);
+    printf("[GPU %d] Total kernel time: %f ms\n", device_id, elapsed);
 
     int h_hist[256];
     check(cudaMemcpy(h_hist, d_hist, 256 * sizeof(int), cudaMemcpyDeviceToHost), "D2H hist");
@@ -94,8 +99,8 @@ void run_gpu(int device_id, unsigned char* h_input, unsigned char* h_output, int
 
     cudaFree(d_y);
     cudaFree(d_hist);
-    cudaFree(d_input);
-    cudaFree(d_output);
+    cudaFreeHost(d_input);
+    cudaFreeHost(d_output);
 }
 
 void compute_cdf(int* hist, int* cdf, int size) {
@@ -109,7 +114,7 @@ void compute_cdf(int* hist, int* cdf, int size) {
 }
 
 int main() {
-    unsigned char* h_input; // Allocate and load image
+    unsigned char* h_input = (unsigned char*)malloc(IMG_SIZE); // Load actual image data here
     unsigned char* h_output = (unsigned char*)malloc(IMG_SIZE);
     int global_histogram[256] = {0};
 
@@ -122,12 +127,13 @@ int main() {
     int cdf[256];
     compute_cdf(global_histogram, cdf, 256);
 
-    // Copy back global cdf and reapply on both GPUs (not shown here)
+    // Optional: apply equalization in another pass if needed
 
     gettimeofday(&end, NULL);
     float elapsed = (end.tv_sec - start.tv_sec) * 1000.0f + (end.tv_usec - start.tv_usec) / 1000.0f;
     printf("Total runtime: %f ms\n", elapsed);
 
+    free(h_input);
     free(h_output);
     return 0;
 }

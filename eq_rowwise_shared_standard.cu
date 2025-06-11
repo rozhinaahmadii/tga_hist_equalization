@@ -207,9 +207,7 @@ int eq_GPU(unsigned char* image) {
 
 
 int main(int argc, char** argv) {
-    struct timeval start_total, end_total;
-    gettimeofday(&start_total, NULL);
-    const char* input = "./IMG/IMG00.jpg";
+    const char* input = "./IMG/IMG01.jpg";
     const char* output = "output_equalized_gpu.png";
 
     image = stbi_load(input, &width, &height, &pixelWidth, 0);
@@ -234,11 +232,6 @@ int main(int argc, char** argv) {
 
     stbi_write_png(output, width, height, pixelWidth, image, 0);
     stbi_image_free(image);
-
-    gettimeofday(&end_total, NULL);
-    long sec = end_total.tv_sec - start_total.tv_sec;
-    long usec = end_total.tv_usec - start_total.tv_usec;
-    double total_time = sec * 1000.0 + usec / 1000.0;    printf("🕒 Total runtime    : %.3f ms\n", total_time);
 
     return 0;
 }

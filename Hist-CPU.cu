@@ -6,6 +6,7 @@
 #include <sys/time.h>
 #include <sys/resource.h>
 using namespace std;
+#include <chrono>
 
 
 #define STB_IMAGE_IMPLEMENTATION
@@ -97,33 +98,29 @@ static int eq_CPU(unsigned char *input_ptr){
 
 int main(int argc, char** argv)
 {
-    char input[] = "./IMG/IMG01.jpg";
-    char output[] = "output_original.jpg";
+    char input[] = "./IMG/IMG00.jpg";
+    char output[] = "out_seq.jpg";
     
-    if (loadImg(input, output) == 0);
-    else
-        return (-1);
+    if (loadImg(input, output) != 0) return -1;
 
     printf("Starting to process.. \n");
-    // Start time
-    struct timeval start, end;
-    gettimeofday(&start, NULL);   
 
+    // Start timer
+    auto start = std::chrono::high_resolution_clock::now();
+
+    // Core CPU computation (histogram equalization)
     eq_CPU(image);
 
-    // End time
-    gettimeofday(&end, NULL);
-    long seconds = end.tv_sec - start.tv_sec;
-    long micros  = end.tv_usec - start.tv_usec;
-    double elapsed_ms = seconds * 1000.0 + micros / 1000.0;
+    // Stop timer
+    auto end = std::chrono::high_resolution_clock::now();
 
-    printf(" CPU equalization done in %.3f ms\n", elapsed_ms);
+    // Calculate elapsed time in milliseconds
+    double duration = std::chrono::duration<double, std::milli>(end - start).count();
+    printf("CPU Processing Time: %.3f ms\n", duration);
 
-    string output_name;
-    //Save the image
+    // Save image
     printf("Saving output image..\n");
-    output_name = "output_CPU.jpg";
-
+    std::string output_name = "output_pixel_CPU.jpg";
     const char* name2 = output_name.c_str();
     stbi_write_png(name2 ,width,height,pixelWidth,image,0);
 

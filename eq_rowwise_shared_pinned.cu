@@ -207,10 +207,7 @@ int eq_GPU(unsigned char* image) {
 }
 
 int main(int argc, char** argv) {
-    struct timeval start_main, end_main;
-    gettimeofday(&start_main, NULL);	
-	   
-	   cudaFree(0);
+    cudaFree(0);
     const char* input = "./IMG/IMG00.jpg";
     const char* output = "output_equalized_gpu_pinned.png";
 
@@ -233,7 +230,8 @@ int main(int argc, char** argv) {
     printf("Image: %d x %d, Channels: %d, Size: %d\n", width, height, pixelWidth, size);
 
     // ✅ Measure total runtime *after* data is in pinned memory
-
+    struct timeval start_main, end_main;
+    gettimeofday(&start_main, NULL);
 
     eq_GPU(image);               // GPU execution
     cudaDeviceSynchronize();     // ✅ Wait for everything

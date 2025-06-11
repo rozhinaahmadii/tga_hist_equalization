@@ -1,0 +1,166 @@
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <cuda_runtime.h>
+#include <chrono>
+#define STB_IMAGE_IMPLEMENTATION
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "stb_image.h"
+#include "stb_image_write.h"
+
+#define CHANNELS 3
+
+__global__ void rgb2ycbcr_rowwise(unsigned char *input, float *Y, int width, int height, int channels) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int row = blockIdx.y;
+    if (idx < width && row < height) {
+        int i = (row * width + idx) * channels;
+        float r = input[i];
+        float g = input[i + 1];
+        float b = input[i + 2];
+        Y[row * width + idx] = 0.299f * r + 0.587f * g + 0.114f * b;
+    }
+}
+
+__global__ void histogram_shared(float *Y, float *hist_out, int width, int height) {
+    __shared__ unsigned int histo[256];
+    int tid = threadIdx.x;
+    if (tid < 256) histo[tid] = 0;
+    __syncthreads();
+
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y;
+    if (x < width && y < height) {
+        int idx = y * width + x;
+        int val = (int)Y[idx];
+        atomicAdd(&(histo[val]), 1);
+    }
+    __syncthreads();
+
+    if (tid < 256) atomicAdd(&(hist_out[tid]), histo[tid]);
+}
+
+__global__ void equalize_and_reconstruct(unsigned char *input, unsigned char *output, float *cdf, int width, int height, int channels) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int row = blockIdx.y;
+    if (idx < width && row < height) {
+        int i = (row * width + idx) * channels;
+        float r = input[i];
+        float g = input[i + 1];
+        float b = input[i + 2];
+        float Y = 0.299f * r + 0.587f * g + 0.114f * b;
+        int y = (int)Y;
+        float eq = cdf[y] * 255.0f;
+        float scale = eq / (Y + 1e-5f);
+        output[i] = min(255.0f, r * scale);
+        output[i + 1] = min(255.0f, g * scale);
+        output[i + 2] = min(255.0f, b * scale);
+    }
+}
+
+void compute_cdf(float *hist, float *cdf, int size) {
+    float sum = 0;
+    for (int i = 0; i < size; ++i) sum += hist[i];
+    float accum = 0;
+    for (int i = 0; i < size; ++i) {
+        accum += hist[i];
+        cdf[i] = accum / sum;
+    }
+}
+
+void eq_GPU_dual(unsigned char *input, unsigned char *output, int width, int height, int channels) {
+    int halfHeight = height / 2;
+    int imgSize = width * height * channels;
+    int halfImgSize = width * halfHeight * channels;
+
+    float *d_hist[2], *d_Y[2];
+    unsigned char *d_in[2], *d_out[2];
+    float h_hist[256] = {0};
+
+    dim3 block(32);
+    dim3 grid((width + block.x - 1) / block.x, halfHeight);
+
+    for (int dev = 0; dev < 2; ++dev) {
+        cudaSetDevice(dev);
+        cudaMalloc(&d_in[dev], halfImgSize);
+        cudaMalloc(&d_out[dev], halfImgSize);
+        cudaMalloc(&d_Y[dev], width * halfHeight * sizeof(float));
+        cudaMalloc(&d_hist[dev], 256 * sizeof(float));
+        cudaMemcpy(d_hist[dev], h_hist, 256 * sizeof(float), cudaMemcpyHostToDevice);
+    }
+
+    cudaSetDevice(0);
+    cudaMemcpy(d_in[0], input, halfImgSize, cudaMemcpyHostToDevice);
+    cudaSetDevice(1);
+    cudaMemcpy(d_in[1], input + halfImgSize, halfImgSize, cudaMemcpyHostToDevice);
+
+    for (int dev = 0; dev < 2; ++dev) {
+        cudaSetDevice(dev);
+        rgb2ycbcr_rowwise<<<grid, block>>>(d_in[dev], d_Y[dev], width, halfHeight, channels);
+        histogram_shared<<<grid, block>>>(d_Y[dev], d_hist[dev], width, halfHeight);
+    }
+
+    float h_hist_dev[2][256];
+    for (int dev = 0; dev < 2; ++dev) {
+        cudaSetDevice(dev);
+        cudaMemcpy(h_hist_dev[dev], d_hist[dev], 256 * sizeof(float), cudaMemcpyDeviceToHost);
+    }
+
+    for (int i = 0; i < 256; ++i)
+        h_hist[i] = h_hist_dev[0][i] + h_hist_dev[1][i];
+
+    float h_cdf[256];
+    compute_cdf(h_hist, h_cdf, 256);
+
+    float *d_cdf;
+    cudaSetDevice(0);
+    cudaMalloc(&d_cdf, 256 * sizeof(float));
+    cudaMemcpy(d_cdf, h_cdf, 256 * sizeof(float), cudaMemcpyHostToDevice);
+    cudaSetDevice(1);
+    cudaMalloc(&d_cdf, 256 * sizeof(float));
+    cudaMemcpy(d_cdf, h_cdf, 256 * sizeof(float), cudaMemcpyHostToDevice);
+
+    for (int dev = 0; dev < 2; ++dev) {
+        cudaSetDevice(dev);
+        equalize_and_reconstruct<<<grid, block>>>(d_in[dev], d_out[dev], d_cdf, width, halfHeight, channels);
+    }
+
+    cudaSetDevice(0);
+    cudaMemcpy(output, d_out[0], halfImgSize, cudaMemcpyDeviceToHost);
+    cudaSetDevice(1);
+    cudaMemcpy(output + halfImgSize, d_out[1], halfImgSize, cudaMemcpyDeviceToHost);
+
+    for (int dev = 0; dev < 2; ++dev) {
+        cudaSetDevice(dev);
+        cudaFree(d_in[dev]);
+        cudaFree(d_out[dev]);
+        cudaFree(d_Y[dev]);
+        cudaFree(d_hist[dev]);
+    }
+    cudaFree(d_cdf);
+}
+
+int main() {
+    const char* input_path = "./IMG/IMG00.jpg";
+    const char* output_path = "output_equalized_gpu_pinned.png";
+
+    int width, height, channels;
+    unsigned char *input = stbi_load(input_path, &width, &height, &channels, CHANNELS);
+    if (!input) {
+        fprintf(stderr, "Error loading image\n");
+        return 1;
+    }
+    int imgSize = width * height * CHANNELS;
+    unsigned char *output = (unsigned char *)malloc(imgSize);
+
+    auto start = std::chrono::high_resolution_clock::now();
+    eq_GPU_dual(input, output, width, height, CHANNELS);
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::milli> elapsed = end - start;
+    printf("[GPU 2] Total time: %.6f ms\n", elapsed.count());
+
+    stbi_write_png(output_path, width, height, CHANNELS, output, width * CHANNELS);
+    stbi_image_free(input);
+    free(output);
+    return 0;
+}

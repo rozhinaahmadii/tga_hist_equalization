@@ -185,11 +185,11 @@ int eq_GPU(unsigned char* image) {
     cudaEventElapsedTime(&tEq, startEqualize, stopEqualize);
 
     printf("\n=== Kernel Performance Report ===\n");
-    printf("🔵 RGB → YCbCr + initial hist: %.3f ms\n", tYCbCr);
-    printf("🟡 Blur Y channel           : %.3f ms\n", tBlur);
-    printf("🟣 Histogram (shared mem)   : %.3f ms\n", tHist);
-    printf("🟢 Equalize + Reconstruct   : %.3f ms\n", tEq);
-    printf("🔷 Total kernel time        : %.3f ms\n", tYCbCr + tBlur + tHist + tEq);
+    printf(" RGB → YCbCr + initial hist: %.3f ms\n", tYCbCr);
+    printf(" Blur Y channel           : %.3f ms\n", tBlur);
+    printf(" Histogram (shared mem)   : %.3f ms\n", tHist);
+    printf(" Equalize + Reconstruct   : %.3f ms\n", tEq);
+    printf(" Total kernel time        : %.3f ms\n", tYCbCr + tBlur + tHist + tEq);
     printf("=================================\n");
 
     gettimeofday(&end_total, NULL);
@@ -221,7 +221,7 @@ int main(int argc, char** argv) {
     pixelWidth = n_channels;
     int size = width * height * pixelWidth;
 
-    // ✅ Allocate pinned memory and copy image
+    // Allocate pinned memory and copy image
     cudaHostAlloc((void**)&image, size, cudaHostAllocDefault);
     memcpy(image, raw, size);
     stbi_image_free(raw); // Free raw image right after copy
@@ -229,18 +229,18 @@ int main(int argc, char** argv) {
     printf("📷 Loaded image: %s (Width: %d, Height: %d, Channels: %d)\n", input, width, height, pixelWidth);
     printf("Image: %d x %d, Channels: %d, Size: %d\n", width, height, pixelWidth, size);
 
-    // ✅ Measure total runtime *after* data is in pinned memory
+    //  Measure total runtime *after* data is in pinned memory
     struct timeval start_main, end_main;
     gettimeofday(&start_main, NULL);
 
     eq_GPU(image);               // GPU execution
-    cudaDeviceSynchronize();     // ✅ Wait for everything
+    cudaDeviceSynchronize();     // Wait for everything
 
     gettimeofday(&end_main, NULL);
     long sec = end_main.tv_sec - start_main.tv_sec;
     long usec = end_main.tv_usec - start_main.tv_usec;
     double elapsed_ms = sec * 1000.0 + usec / 1000.0;
-    printf("✅ Total main() runtime (incl. GPU): %.3f ms\n", elapsed_ms);
+    printf("Total main() runtime (incl. GPU): %.3f ms\n", elapsed_ms);
 
     // Save and cleanup
     stbi_write_png(output, width, height, pixelWidth, image, 0);

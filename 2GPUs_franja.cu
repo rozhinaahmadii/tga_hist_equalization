@@ -231,7 +231,7 @@ int eq_GPU_multi(unsigned char* image) {
     gettimeofday(&end_total, NULL);
     double total_time = (end_total.tv_sec - start_total.tv_sec) * 1000.0 + 
                        (end_total.tv_usec - start_total.tv_usec) / 1000.0;
-    printf("\n✅ Total GPU (2 GPUs) time: %.3f ms\n", total_time);
+    printf("\nTotal GPU (2 GPUs) time: %.3f ms\n", total_time);
 
     return 0;
 }
@@ -244,7 +244,7 @@ int main(int argc, char** argv) {
     int n_channels;
     unsigned char* raw = stbi_load(input, &width, &height, &n_channels, 0);
     if (!raw) {
-        fprintf(stderr, "❌ Couldn't load image.\n");
+        fprintf(stderr, "Couldn't load image.\n");
         return -1;
     }
 
@@ -256,7 +256,7 @@ int main(int argc, char** argv) {
     memcpy(image, raw, size);
     stbi_image_free(raw);
 
-    printf("📷 Image loaded: %d x %d (Channels: %d)\n", width, height, pixelWidth);
+    printf("Image loaded: %d x %d (Channels: %d)\n", width, height, pixelWidth);
 
     // Ejecutar en 2 GPUs
     struct timeval start, end;
@@ -266,7 +266,7 @@ int main(int argc, char** argv) {
 
     double elapsed = (end.tv_sec - start.tv_sec) * 1000.0 + 
                     (end.tv_usec - start.tv_usec) / 1000.0;
-    printf("🕒 Total runtime (incl. GPU): %.3f ms\n", elapsed);
+    printf("Total runtime (incl. GPU): %.3f ms\n", elapsed);
 
     // Guardar imagen
     stbi_write_png(output, width, height, pixelWidth, image, 0);

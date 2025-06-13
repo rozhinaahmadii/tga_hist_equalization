@@ -196,7 +196,7 @@ int eq_GPU(unsigned char* image) {
     long sec = end_total.tv_sec - start_total.tv_sec;
     long usec = end_total.tv_usec - start_total.tv_usec;
     double total_time_ms = sec * 1000.0 + usec / 1000.0;
-    printf("🕒 Total GPU execution time (gettimeofday): %.3f ms\n\n", total_time_ms);
+    printf("Total GPU execution time (gettimeofday): %.3f ms\n\n", total_time_ms);
 
     cudaFree(d_image);
     cudaFree(d_blurred);
@@ -214,7 +214,7 @@ int main(int argc, char** argv) {
     int n_channels;
     unsigned char* raw = stbi_load(input, &width, &height, &n_channels, 0);
     if (!raw) {
-        fprintf(stderr, "❌ Couldn't load image.\n");
+        fprintf(stderr, " Couldn't load image.\n");
         return -1;
     }
 
@@ -226,7 +226,7 @@ int main(int argc, char** argv) {
     memcpy(image, raw, size);
     stbi_image_free(raw); // Free raw image right after copy
 
-    printf("📷 Loaded image: %s (Width: %d, Height: %d, Channels: %d)\n", input, width, height, pixelWidth);
+    printf(" Loaded image: %s (Width: %d, Height: %d, Channels: %d)\n", input, width, height, pixelWidth);
     printf("Image: %d x %d, Channels: %d, Size: %d\n", width, height, pixelWidth, size);
 
     //  Measure total runtime *after* data is in pinned memory

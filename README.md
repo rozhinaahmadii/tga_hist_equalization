@@ -40,8 +40,8 @@ The equalization process includes the following steps:
 | 4  | 1 GPU     | Row-wise, shared memory (pinned)     | Shared Pinned | No    | `eq_rowwise_shared_pinned.cu`       |
 | 5  | 1 GPU     | Shared pinned + CUDA streams         | Shared Pinned | Yes   | `eq_rowwise_shared_pinned_streams.cu` |
 | 6  | 1 GPU     | Shared standard + CUDA streams       | Shared Std  | Yes     | `eq_rowwise_shared_standard_streams.cu` |
-| 7  | 2 GPUs    | Multi-GPU version (no streams)       | Shared Pinned | No    | `multi_gpu_2.cu`                     |
-| 8  | 4 GPUs    | Multi-GPU version (no streams)       | Shared Pinned | No    | `multi_gpu_4.cu`                     |
+| 7  | 2 GPUs    | Multi-GPU version (no streams)       | Shared Pinned | No    | `2GPUs.cu`                     |
+| 8  | 4 GPUs    | Multi-GPU version (no streams)       | Shared Pinned | No    | `4GPUs.cu`                     |
 
 ---
 

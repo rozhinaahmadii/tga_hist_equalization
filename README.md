@@ -77,7 +77,7 @@ The equalization process includes the following steps:
 ### 1. Compile with `make` and run the version
 ```bash
 make
-./eq_CPU.exe
+sbatch job.sh
 ```
 ## ✅ Expected Results
 You can expect a 40–60x speedup on large images with the optimized single-GPU versions using shared memory and streams.
